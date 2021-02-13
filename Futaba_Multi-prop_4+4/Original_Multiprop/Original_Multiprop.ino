@@ -97,7 +97,7 @@ void setup()
   //attach an interrupt to the RX input pin of the multiprop 4 + 4
 
   enableInterrupt(AUX_IN_PIN, calcAux, CHANGE);
-  //PCintPort::attachInterrupt(AUX_IN_PIN, calcAux, CHANGE);
+
 }
 
 void loop()
@@ -108,7 +108,7 @@ void loop()
   int crtTime = millis();
 
   //if the interrupt routine flag is set, print multiswitch values;
-
+/*
   if (output_ready == 1)
   {
     if(crtTime > lastDebugTime + debugInterval) {
@@ -124,7 +124,7 @@ void loop()
       lastDebugTime = crtTime;
     }
   }
-
+*/
   //if the interrupt routine flag is set, we have a set of servos to move
 
   if (output_ready == 1)
