@@ -1,14 +1,12 @@
 #include <VarSpeedServo.h>
-//#include <Servo.h>
 #include <EnableInterrupt.h>
+#include "ThreeStateDoubleSwitch.h"
 
 #define NUM_OUTPUTS         8
 #define NUM_SERVOS          4
+#define NUM_SWITCHES        4
 
 volatile long lastChange = 0;
-
-int lastDebugTime = 0;
-int debugInterval = 200;
 
 #define AUX_IN_PIN A4 //input pin for the correspondent multiprop channel (in my case, CH6 -> A4);
 
@@ -22,23 +20,16 @@ int outputA_pins[NUM_OUTPUTS];
 int outputB_pins[NUM_OUTPUTS];
 
 //Servo servos[NUM_SERVOS]; // only 4 servo, 1 per each prop, only one servo used in my experiment
+
 VarSpeedServo servos[NUM_SERVOS];
 
-int crnt_state_A = 1; // 0  1  2  for three state switch
-int prev_state_A = -1;
+ThreeStateDoubleSwitch switches[NUM_SWITCHES];
 
-int upper_state_A = 0; // 0 or 1, on or off
-int lower_state_A = 0;
+void calcAux();
 
 void setup()
 {
     pinMode(AUX_IN_PIN, INPUT_PULLUP);
-
-    //set current default values for servo settings
-    crnt_state_A = 1; //0, 1, or 2  vals for 3 position switch
-    prev_state_A = 1;
-    upper_state_A = 0; // 0 or 1, on or off
-    lower_state_A = 0;
 
     Serial.begin(115200);
 
@@ -121,8 +112,7 @@ void setup()
 void loop()
 {
     int outputnum = 0;
-    //uint32_t crtTime = millis();
-
+    
     //if the interrupt routine flag is set, we have a set of servos to move
     if( output_ready == 1 )
     {
@@ -142,53 +132,18 @@ void loop()
                 //case    3:
                     // I only use one Prop to drive a servo, position 1
                     servos[outputnum].write( map(nonISR_output[outputnum], 1000,2000, 0, 180), 51);
-
-                break;
+                    break;
 
                 case    4:
+                //case    5:
+                //case    6:
                     // I only use one switch to light two distinct led circuits, position 5
-                    if( (nonISR_output[outputnum] >= 1020) && (nonISR_output[outputnum] <= 1070) )
-                    {
-                        // switch upper position  - crnt_state_A = 2
-                        crnt_state_A = 2;
-                        if( crnt_state_A != prev_state_A )
-                        {
-                            upper_state_A ^= 1;
-                            prev_state_A = crnt_state_A;
-
-                        }//if
-
-                    }//if
-
-                    if( (nonISR_output[outputnum] >= 1940) && (nonISR_output[outputnum] <= 1980) )
-                    {
-                        // switch lower position  - crnt_state_A = 0
-                        crnt_state_A = 0;
-                        if( crnt_state_A != prev_state_A )
-                        {
-                            lower_state_A ^= 1;
-                            prev_state_A = crnt_state_A;
-
-                        }//if
-
-                    }//if
-
-                    if ((nonISR_output[outputnum] >= 1480) && (nonISR_output[outputnum] <= 1540))
-                    {
-                        // switch middle(neutral) position  - crnt_state_A = 1
-                        crnt_state_A = 1;
-                        prev_state_A = 1;
-
-                    }//if
-
+                    switches[outputnum-4].computeNewState(nonISR_output[outputnum]);
                     //check the on/off state and act
-                    digitalWrite( outputA_pins[outputnum], (upper_state_A == 1) ? HIGH:LOW );
-                    digitalWrite( outputB_pins[outputnum], (lower_state_A == 1) ? HIGH:LOW );
+                    digitalWrite(outputA_pins[outputnum], switches[outputnum-4].isUpperSwitchOn() ? HIGH:LOW );
+                    digitalWrite(outputB_pins[outputnum], switches[outputnum-4].isLowerSwitchOn() ? HIGH:LOW );
+                    break;
 
-                break;
-
-                case    5:
-                case    6:
                 case    7:
                     if( (nonISR_output[outputnum] >= 1020) && (nonISR_output[outputnum] <= 1070) )
                     {
@@ -207,9 +162,7 @@ void loop()
                         digitalWrite( outputB_pins[outputnum], LOW );
 
                     }//if
-
-                break;
-
+                    break;
             }//switch
 
         }//for
@@ -260,4 +213,4 @@ void calcAux()
 
     }//else
 
-}//calcAux
+}//calcAux 
