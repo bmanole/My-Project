@@ -1,4 +1,4 @@
-#include <VarSpeedServo.h>
+ #include <VarSpeedServo.h>
 #include <EnableInterrupt.h>
 #include "ThreeStateDoubleSwitch.h"
 
@@ -15,7 +15,8 @@ volatile uint16_t unAuxInShared;
 volatile uint32_t ulAuxStart;
 volatile uint8_t output_ready;
 volatile int multi_output[NUM_OUTPUTS]; // Array that holds effective RC reading from multiprop;
-int nonISR_output[NUM_OUTPUTS];
+int nonISR_output[NUM_OUTPUTS] = {0,}; // Array that holds a copy multi_output values, outside ISR 
+int comp_output[NUM_OUTPUTS] = {0,}; // Array that old previous multi_output values
 int outputA_pins[NUM_OUTPUTS];
 int outputB_pins[NUM_OUTPUTS];
 
@@ -29,9 +30,9 @@ void calcAux();
 
 void setup()
 {
-    pinMode(AUX_IN_PIN, INPUT_PULLUP);
+    pinMode(AUX_IN_PIN, INPUT_PULLUP); 
 
-    Serial.begin(115200);
+    Serial.begin(115200); 
 
     // Init array of output pins
     // 1-4 Props
@@ -112,30 +113,58 @@ void setup()
 void loop()
 {
     int outputnum = 0;
-    
+
+if (output_ready == 1) {
+  
+for (outputnum = 0; outputnum < 8; outputnum++) {
+
+  Serial.print(outputnum);
+  Serial.print("/");
+  Serial.print(multi_output[outputnum]);
+  Serial.print(" ");
+  }
+Serial.println();
+delay(250);
+} 
+
     //if the interrupt routine flag is set, we have a set of servos to move
     if( output_ready == 1 )
     {
         noInterrupts();
         // copy ISR_accessed array to working, non-ISR array in protected section
-        for( uint8_t idx=0; idx<8; idx++ )
+        for( uint8_t idx=0; idx<8; idx++ ){
+            comp_output[idx] = nonISR_output[idx];
             nonISR_output[idx] = multi_output[idx];
+        }
         interrupts();
 
         for (outputnum = 0; outputnum < 8; outputnum++)
         {
-            switch( outputnum )
+
+         
+           switch( outputnum )
             {
                 case    0:
                 //case    1:
                 //case    2:
                 //case    3:
+                
+                  if (nonISR_output[outputnum]-comp_output[outputnum]>4 || nonISR_output[outputnum]-comp_output[outputnum]<-4) {
+                
                     // I only use one Prop to drive a servo, position 1
-                    servos[outputnum].write( map(nonISR_output[outputnum], 1000,2000, 0, 180), 51);
+                    servos[outputnum].write( map(nonISR_output[outputnum],1020,1980,5,175), 30,false); 
+                    }
+
+                    else {
+
+                   // I only use one Prop to drive a servo, position 1
+                    servos[outputnum].write( map(comp_output[outputnum],1020,1980,5,175),30,false);
+                    }
+                    
                     break;
 
                 case    4:
-                //case    5:
+                //case    5: 
                 //case    6:
                     // I only use one switch to light two distinct led circuits, position 5
                     switches[outputnum-4].computeNewState(nonISR_output[outputnum]);
