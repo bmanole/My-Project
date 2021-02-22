@@ -1,26 +1,23 @@
 #include <VarSpeedServo.h>
-//#include <EnableInterrupt.h>
 #include "ThreeStateDoubleSwitch.h"
 
 #define NUM_OUTPUTS         8
 #define NUM_SERVOS          4
 #define NUM_SWITCHES        4
 
-//#define AUX_IN_PIN 8 //input pin for the correspondent multiprop channel (in my case, CH6 -> A4);
-
+// ISR variables
 byte last_channel_1;
 unsigned long timer_1, current_time, receiver_input;
-
-
 volatile uint8_t current_output = 0;
-volatile uint16_t unAuxInShared;
-volatile uint32_t ulAuxStart;
-volatile uint8_t output_ready;
-volatile int multi_output[NUM_OUTPUTS]; // Array that holds effective RC reading from multiprop;
-int nonISR_output[NUM_OUTPUTS] = {0,}; // Array that holds a copy multi_output values, outside ISR 
+volatile uint8_t output_ready = 0;
 
-int outputA_pins[NUM_OUTPUTS];
-int outputB_pins[NUM_OUTPUTS];
+volatile int multi_output[NUM_OUTPUTS] = {0,}; // Array that holds effective RC reading from multiprop;
+int nonISR_output[NUM_OUTPUTS] = {0,};        // Array that holds a copy multi_output values, outside ISR 
+
+uint8_t outputA_pins[NUM_OUTPUTS];
+uint8_t outputB_pins[NUM_OUTPUTS];
+
+uint8_t SPEED = 28; // servo speed for speed library, value from 0 to 255;
 
 //Servo servos[NUM_SERVOS]; // only 4 servo, 1 per each prop, only one servo used in my experiment
 
@@ -28,22 +25,18 @@ VarSpeedServo servos[NUM_SERVOS];
 
 ThreeStateDoubleSwitch switches[NUM_SWITCHES];
 
-void calcAux();
-
 void setup()
 {
- //   pinMode(AUX_IN_PIN, INPUT_PULLUP); 
 
  //   Serial.begin(115200); 
 
-PCICR |= (1 << PCIE0);                                                    //Set PCIE0 to enable PCMSK0 scan.
-PCMSK0 |= (1 << PCINT0);                                                  //Set PCINT0 (digital input 8) to trigger an interrupt on state change.
-
+      PCICR |= (1 << PCIE0);               //Set PCIE0 to enable PCMSK0 scan.
+      PCMSK0 |= (1 << PCINT0);             //Set PCINT0 (digital input 8) to trigger an interrupt on state change.
 
 
     // Init array of output pins
-    // 1-4 Props
-    // 5-8 - (3 Position Switches)
+    // 1-4 - Props
+    // 5-8 - 3 Position Switches
 
     // Primary function array, includes both switched and props
 
@@ -69,7 +62,7 @@ PCMSK0 |= (1 << PCINT0);                                                  //Set 
 
     // assign output pins
 
-    for( int outputnum=0; outputnum<NUM_OUTPUTS; outputnum++ )
+    for( uint8_t outputnum=0; outputnum<NUM_OUTPUTS; outputnum++ )
     {
         if( outputA_pins[outputnum] != 0 )
         {
@@ -82,7 +75,7 @@ PCMSK0 |= (1 << PCINT0);                                                  //Set 
 
     //set up the array of switch and servo objects, and init switch to LOW and servo to a "centered" position
 
-    for( int outputnum=0; outputnum<NUM_OUTPUTS; outputnum++ )
+    for( uint8_t outputnum=0; outputnum<NUM_OUTPUTS; outputnum++ )
     {
         if( outputnum > 3 )
         {
@@ -100,7 +93,7 @@ PCMSK0 |= (1 << PCINT0);                                                  //Set 
             if( outputA_pins[outputnum] != 0 )
             {
                 servos[outputnum].attach( outputA_pins[outputnum], 1020,1980 );
-                servos[outputnum].writeMicroseconds( multi_output[outputnum] );
+                servos[outputnum].write( map(multi_output[outputnum],1020,1980,5,175),SPEED );
 
             }//if
 
@@ -108,18 +101,12 @@ PCMSK0 |= (1 << PCINT0);                                                  //Set 
 
     }//for
 
-    unAuxInShared = 0;
-    output_ready = 0;
-
-    //attach an interrupt to the RX input pin of the multiprop 4 + 4
-
- //   enableInterrupt( AUX_IN_PIN, calcAux, CHANGE );
 
 }//setup
 
 void loop()
 {
-    int outputnum = 0;
+
 /*
 if (output_ready == 1) {
   
@@ -135,48 +122,54 @@ delay(250);
 } 
 */
     //if the interrupt routine flag is set, we have a set of servos to move
+    
     if( output_ready == 1 )
     {
       
        noInterrupts();
         // copy ISR_accessed array to working, non-ISR array in protected section
-        for( uint8_t idx=0; idx<8; idx++ ){
+        for( uint8_t outputnum=0; outputnum<8; outputnum++ ){
        
-          nonISR_output[idx] = multi_output[idx];
-        }
+          nonISR_output[outputnum] = multi_output[outputnum];
+          
+        }//for
       interrupts();
 
-        for (outputnum = 0; outputnum < 8; outputnum++)
+        for (uint8_t outputnum = 0; outputnum < 8; outputnum++)
         {
 
          
            switch( outputnum )
             {
                 case    0:
+
+                    // I only use one Prop to drive a servo, position 1
+                    servos[outputnum].write( map(nonISR_output[outputnum],1020,1980,5,175), SPEED);
+                    //servos[outputnum].writeMicroseconds(nonISR_output[outputnum]);
+                   
+                    break;
+
+
                 //case    1:
                 //case    2:
                 //case    3:
-                
-                  
-                    // I only use one Prop to drive a servo, position 1
-                    servos[outputnum].write( map(nonISR_output[outputnum],1020,1980,5,175), 28);
-                    //servos[outputnum].writeMicroseconds(nonISR_output[outputnum]);
-                   
-
-                    
-                    break;
 
                 case    4:
-                //case    5: 
-                //case    6:
+
                     // I only use one switch to light two distinct led circuits, position 5
                     switches[outputnum-4].computeNewState(nonISR_output[outputnum]);
+                    
                     //check the on/off state and act
                     digitalWrite(outputA_pins[outputnum], switches[outputnum-4].isUpperSwitchOn() ? HIGH:LOW );
                     digitalWrite(outputB_pins[outputnum], switches[outputnum-4].isLowerSwitchOn() ? HIGH:LOW );
+                    
                     break;
 
+                //case    5: 
+                //case    6:
+
                 case    7:
+                
                     if( (nonISR_output[outputnum] >= 1020) && (nonISR_output[outputnum] <= 1070) )
                     {
                         digitalWrite( outputA_pins[outputnum], HIGH );
@@ -194,12 +187,12 @@ delay(250);
                         digitalWrite( outputB_pins[outputnum], LOW );
 
                     }//if
+                    
                     break;
+                    
             }//switch
 
         }//for
-
-        output_ready = 0;
 
     }//if
 
@@ -207,8 +200,11 @@ delay(250);
 
 
 ISR(PCINT0_vect){
+  
   current_time = micros();
-  //Channel 6=========================================
+  
+  //Receiver Channel 6 to D8 
+    
   if(PINB & B00000001){                                                     //Is input 8 high?
     if(last_channel_1 == 0){                                                //Input 8 changed from 0 to 1.
       last_channel_1 = 1;                                                   //Remember current input state.
@@ -230,8 +226,8 @@ ISR(PCINT0_vect){
                   multi_output[current_output]= receiver_input;
                   current_output++;
                   output_ready = 1;
-                 }
+                 } 
     
           }
-  }
+    }
 }
